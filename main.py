@@ -1,6 +1,10 @@
 import argparse
 import multiprocessing
 import os
+import sys
+import tempfile
+import traceback
+from datetime import datetime
 
 import flet as ft
 from dotenv import load_dotenv
@@ -15,6 +19,19 @@ from app.ui.components.common.save_progress_overlay import SaveProgressOverlay
 from app.ui.layout.responsive_layout import setup_responsive_layout
 from app.ui.views.login_view import LoginPage
 from app.utils.logger import logger
+
+def _startup_log(message: str) -> None:
+    """Write diagnostics without depending on the app logger."""
+    paths = [os.path.join(os.path.dirname(sys.executable), "startup_error.log"),
+             os.path.join(tempfile.gettempdir(), "StreamCap-startup_error.log")]
+    for path in paths:
+        try:
+            with open(path, "a", encoding="utf-8") as out:
+                out.write(f"[{datetime.now().isoformat(timespec='seconds')}] {message}\n")
+            return
+        except OSError:
+            continue
+
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 6006
@@ -113,11 +130,22 @@ def handle_page_resize(page: ft.Page, app: App) -> callable:
 
 
 async def main(page: ft.Page) -> None:
+    _startup_log("Flet invoked main(page)")
+    try:
+        await _main_impl(page)
+    except BaseException:
+        _startup_log("Exception in main(page):\n" + traceback.format_exc())
+        raise
+
+
+async def _main_impl(page: ft.Page) -> None:
     page.title = "StreamCap"
     page.window.min_width = MIN_WIDTH
     page.window.min_height = MIN_WIDTH * WINDOW_SCALE
 
+    _startup_log("Initializing App(page)")
     app = App(page)
+    _startup_log("App(page) initialized")
     page.data = app
     app.is_web_mode = page.web
     app.is_mobile = False
@@ -145,7 +173,9 @@ async def main(page: ft.Page) -> None:
             page.on_resize = handle_page_resize(page, app)
             page.on_disconnect = handle_disconnect(page, app)
 
+        _startup_log("Adding main UI controls")
         page.add(app.complete_page)
+        _startup_log("Main UI controls added")
 
         page.on_route_change = handle_route_change(page, app)
         page.window.prevent_close = True
@@ -212,6 +242,7 @@ async def main(page: ft.Page) -> None:
 
 
 if __name__ == "__main__":
+    _startup_log("Python entry point started")
     load_dotenv()
     platform = os.getenv("PLATFORM")
     default_host = os.getenv("HOST", DEFAULT_HOST)
@@ -236,4 +267,9 @@ if __name__ == "__main__":
         )
     else:
         setup_bundled_flet_view()
-        ft.run(main=main, assets_dir=ASSETS_DIR)
+        try:
+            _startup_log("Calling ft.run desktop")
+            ft.run(main=main, assets_dir=ASSETS_DIR)
+        except BaseException:
+            _startup_log("Exception in ft.run:\n" + traceback.format_exc())
+            raise
