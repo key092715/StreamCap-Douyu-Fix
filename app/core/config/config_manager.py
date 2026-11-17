@@ -106,7 +106,17 @@ class ConfigManager:
         return self._load_config(self.about_config_path, "An error occurred while loading about config")
 
     def load_language_config(self):
-        return self._load_config(self.language_config_path, "An error occurred while loading language config")
+        config = self._load_config(
+        self.language_config_path,
+        "An error occurred while loading language config",
+    )
+    if not isinstance(config, dict) or not config:
+        logger.warning("Language config unavailable, using fallback languages.")
+        return {
+            "Chinese": "zh_CN",
+            "English": "en",
+        }
+    return config
 
     def load_i18n_config(self, path):
         """Load i18n configuration from a JSON file."""
